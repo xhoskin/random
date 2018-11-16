@@ -1,189 +1,6 @@
-angular.module('angular-carousel', [
-    'ngTouch',
-    'angular-carousel.shifty'
-]);
 
 angular.module('angular-carousel')
-
-.directive('rnCarouselAutoSlide', ['$interval', function($interval) {
-  return {
-    restrict: 'A',
-    link: function (scope, element, attrs) {
-        var stopAutoPlay = function() {
-            if (scope.autoSlider) {
-                $interval.cancel(scope.autoSlider);
-                scope.autoSlider = null;
-            }
-        };
-        var restartTimer = function() {
-            scope.autoSlide();
-        };
-
-        scope.$watch('carouselIndex', restartTimer);
-
-        if (attrs.hasOwnProperty('rnCarouselPauseOnHover') && attrs.rnCarouselPauseOnHover !== 'false'){
-            element.on('mouseenter', stopAutoPlay);
-            element.on('mouseleave', restartTimer);
-        }
-
-        scope.$on('$destroy', function(){
-            stopAutoPlay();
-            element.off('mouseenter', stopAutoPlay);
-            element.off('mouseleave', restartTimer);
-        });
-    }
-  };
-}]);
-
-angular.module('angular-carousel')
-
-.directive('rnCarouselIndicators', ['$parse', function($parse) {
-  return {
-    restrict: 'A',
-    scope: {
-      slides: '=',
-      index: '=rnCarouselIndex'
-    },
-    templateUrl: 'carousel-indicators.html',
-    link: function(scope, iElement, iAttributes) {
-      var indexModel = $parse(iAttributes.rnCarouselIndex);
-      scope.goToSlide = function(index) {
-        indexModel.assign(scope.$parent.$parent, index);
-      };
-    }
-  };
-}]);
-
-angular.module('angular-carousel').run(['$templateCache', function($templateCache) {
-  $templateCache.put('carousel-indicators.html',
-      '<div class="rn-carousel-indicator">\n' +
-        '<span ng-repeat="slide in slides" ng-class="{active: $index==index}" ng-click="goToSlide($index)"></span>' +
-      '</div>'
-  );
-}]);
-
-(function() {
-    "use strict";
-
-    angular.module('angular-carousel')
-
-    .service('DeviceCapabilities', function() {
-
-        // TODO: merge in a single function
-
-        // detect supported CSS property
-        function detectTransformProperty() {
-            var transformProperty = 'transform',
-                safariPropertyHack = 'webkitTransform';
-            if (typeof document.body.style[transformProperty] !== 'undefined') {
-
-                ['webkit', 'moz', 'o', 'ms'].every(function (prefix) {
-                    var e = '-' + prefix + '-transform';
-                    if (typeof document.body.style[e] !== 'undefined') {
-                        transformProperty = e;
-                        return false;
-                    }
-                    return true;
-                });
-            } else if (typeof document.body.style[safariPropertyHack] !== 'undefined') {
-                transformProperty = '-webkit-transform';
-            } else {
-                transformProperty = undefined;
-            }
-            return transformProperty;
-        }
-
-        //Detect support of translate3d
-        function detect3dSupport() {
-            var el = document.createElement('p'),
-                has3d,
-                transforms = {
-                    'webkitTransform': '-webkit-transform',
-                    'msTransform': '-ms-transform',
-                    'transform': 'transform'
-                };
-            // Add it to the body to get the computed style
-            document.body.insertBefore(el, null);
-            for (var t in transforms) {
-                if (el.style[t] !== undefined) {
-                    el.style[t] = 'translate3d(1px,1px,1px)';
-                    has3d = window.getComputedStyle(el).getPropertyValue(transforms[t]);
-                }
-            }
-            document.body.removeChild(el);
-            return (has3d !== undefined && has3d.length > 0 && has3d !== "none");
-        }
-
-        return {
-            has3d: detect3dSupport(),
-            transformProperty: detectTransformProperty()
-        };
-
-    })
-
-    .service('computeCarouselSlideStyle', ["DeviceCapabilities", function(DeviceCapabilities) {
-        // compute transition transform properties for a given slide and global offset
-        return function(slideIndex, offset, transitionType) {
-            var style = {
-                    display: 'inline-block'
-                },
-                opacity,
-                absoluteLeft = (slideIndex * 100) + offset,
-                slideTransformValue = DeviceCapabilities.has3d ? 'translate3d(' + absoluteLeft + '%, 0, 0)' : 'translate3d(' + absoluteLeft + '%, 0)',
-                distance = ((100 - Math.abs(absoluteLeft)) / 100);
-
-            if (!DeviceCapabilities.transformProperty) {
-                // fallback to default slide if transformProperty is not available
-                style['margin-left'] = absoluteLeft + '%';
-            } else {
-                if (transitionType == 'fadeAndSlide') {
-                    style[DeviceCapabilities.transformProperty] = slideTransformValue;
-                    opacity = 0;
-                    if (Math.abs(absoluteLeft) < 100) {
-                        opacity = 0.3 + distance * 0.7;
-                    }
-                    style.opacity = opacity;
-                } else if (transitionType == 'hexagon') {
-                    var transformFrom = 100,
-                        degrees = 0,
-                        maxDegrees = 60 * (distance - 1);
-
-                    transformFrom = offset < (slideIndex * -100) ? 100 : 0;
-                    degrees = offset < (slideIndex * -100) ? maxDegrees : -maxDegrees;
-                    style[DeviceCapabilities.transformProperty] = slideTransformValue + ' ' + 'rotateY(' + degrees + 'deg)';
-                    style[DeviceCapabilities.transformProperty + '-origin'] = transformFrom + '% 50%';
-                } else if (transitionType == 'zoom') {
-                    style[DeviceCapabilities.transformProperty] = slideTransformValue;
-                    var scale = 1;
-                    if (Math.abs(absoluteLeft) < 100) {
-                        scale = 1 + ((1 - distance) * 2);
-                    }
-                    style[DeviceCapabilities.transformProperty] += ' scale(' + scale + ')';
-                    style[DeviceCapabilities.transformProperty + '-origin'] = '50% 50%';
-                    opacity = 0;
-                    if (Math.abs(absoluteLeft) < 100) {
-                        opacity = 0.3 + distance * 0.7;
-                    }
-                    style.opacity = opacity;
-                } else {
-                    style[DeviceCapabilities.transformProperty] = slideTransformValue;
-                }
-            }
-            return style;
-        };
-    }])
-
-    .service('createStyleString', function() {
-        return function(object) {
-            var styles = [];
-            angular.forEach(object, function(value, key) {
-                styles.push(key + ':' + value);
-            });
-            return styles.join(';');
-        };
-    })
-
-    .directive('rnCarousel', ['$swipe', '$window', '$document', '$parse', '$compile', '$timeout', '$interval', 'computeCarouselSlideStyle', 'createStyleString', 'Tweenable',
+  .directive('rnCarousel', ['$swipe', '$window', '$document', '$parse', '$compile', '$timeout', '$interval', 'computeCarouselSlideStyle', 'createStyleString', 'Tweenable',
         function($swipe, $window, $document, $parse, $compile, $timeout, $interval, computeCarouselSlideStyle, createStyleString, Tweenable) {
             // internal ids to allow multiple instances
             var carouselId = 0,
@@ -689,7 +506,153 @@ angular.module('angular-carousel').run(['$templateCache', function($templateCach
     ]);
 })();
 
+.directive('rnCarouselIndicators', ['$parse', function($parse) {
+  return {
+    restrict: 'A',
+    scope: {
+      slides: '=',
+      index: '=rnCarouselIndex'
+    },
+    templateUrl: 'carousel-indicators.html',
+    link: function(scope, iElement, iAttributes) {
+      var indexModel = $parse(iAttributes.rnCarouselIndex);
+      scope.goToSlide = function(index) {
+        indexModel.assign(scope.$parent.$parent, index);
+      };
+    }
+  };
+}]);
 
+angular.module('angular-carousel').run(['$templateCache', function($templateCache) {
+  $templateCache.put('carousel-indicators.html',
+      '<div class="rn-carousel-indicator">\n' +
+        '<span ng-repeat="slide in slides" ng-class="{active: $index==index}" ng-click="goToSlide($index)"></span>' +
+      '</div>'
+  );
+}]);
+
+(function() {
+    "use strict";
+
+    angular.module('angular-carousel')
+
+    .service('DeviceCapabilities', function() {
+
+        // TODO: merge in a single function
+
+        // detect supported CSS property
+        function detectTransformProperty() {
+            var transformProperty = 'transform',
+                safariPropertyHack = 'webkitTransform';
+            if (typeof document.body.style[transformProperty] !== 'undefined') {
+
+                ['webkit', 'moz', 'o', 'ms'].every(function (prefix) {
+                    var e = '-' + prefix + '-transform';
+                    if (typeof document.body.style[e] !== 'undefined') {
+                        transformProperty = e;
+                        return false;
+                    }
+                    return true;
+                });
+            } else if (typeof document.body.style[safariPropertyHack] !== 'undefined') {
+                transformProperty = '-webkit-transform';
+            } else {
+                transformProperty = undefined;
+            }
+            return transformProperty;
+        }
+
+        //Detect support of translate3d
+        function detect3dSupport() {
+            var el = document.createElement('p'),
+                has3d,
+                transforms = {
+                    'webkitTransform': '-webkit-transform',
+                    'msTransform': '-ms-transform',
+                    'transform': 'transform'
+                };
+            // Add it to the body to get the computed style
+            document.body.insertBefore(el, null);
+            for (var t in transforms) {
+                if (el.style[t] !== undefined) {
+                    el.style[t] = 'translate3d(1px,1px,1px)';
+                    has3d = window.getComputedStyle(el).getPropertyValue(transforms[t]);
+                }
+            }
+            document.body.removeChild(el);
+            return (has3d !== undefined && has3d.length > 0 && has3d !== "none");
+        }
+
+        return {
+            has3d: detect3dSupport(),
+            transformProperty: detectTransformProperty()
+        };
+
+    })
+
+    .service('computeCarouselSlideStyle', ["DeviceCapabilities", function(DeviceCapabilities) {
+        // compute transition transform properties for a given slide and global offset
+        return function(slideIndex, offset, transitionType) {
+            var style = {
+                    display: 'inline-block'
+                },
+                opacity,
+                absoluteLeft = (slideIndex * 100) + offset,
+                slideTransformValue = DeviceCapabilities.has3d ? 'translate3d(' + absoluteLeft + '%, 0, 0)' : 'translate3d(' + absoluteLeft + '%, 0)',
+                distance = ((100 - Math.abs(absoluteLeft)) / 100);
+
+            if (!DeviceCapabilities.transformProperty) {
+                // fallback to default slide if transformProperty is not available
+                style['margin-left'] = absoluteLeft + '%';
+            } else {
+                if (transitionType == 'fadeAndSlide') {
+                    style[DeviceCapabilities.transformProperty] = slideTransformValue;
+                    opacity = 0;
+                    if (Math.abs(absoluteLeft) < 100) {
+                        opacity = 0.3 + distance * 0.7;
+                    }
+                    style.opacity = opacity;
+                } else if (transitionType == 'hexagon') {
+                    var transformFrom = 100,
+                        degrees = 0,
+                        maxDegrees = 60 * (distance - 1);
+
+                    transformFrom = offset < (slideIndex * -100) ? 100 : 0;
+                    degrees = offset < (slideIndex * -100) ? maxDegrees : -maxDegrees;
+                    style[DeviceCapabilities.transformProperty] = slideTransformValue + ' ' + 'rotateY(' + degrees + 'deg)';
+                    style[DeviceCapabilities.transformProperty + '-origin'] = transformFrom + '% 50%';
+                } else if (transitionType == 'zoom') {
+                    style[DeviceCapabilities.transformProperty] = slideTransformValue;
+                    var scale = 1;
+                    if (Math.abs(absoluteLeft) < 100) {
+                        scale = 1 + ((1 - distance) * 2);
+                    }
+                    style[DeviceCapabilities.transformProperty] += ' scale(' + scale + ')';
+                    style[DeviceCapabilities.transformProperty + '-origin'] = '50% 50%';
+                    opacity = 0;
+                    if (Math.abs(absoluteLeft) < 100) {
+                        opacity = 0.3 + distance * 0.7;
+                    }
+                    style.opacity = opacity;
+                } else {
+                    style[DeviceCapabilities.transformProperty] = slideTransformValue;
+                }
+            }
+            return style;
+        };
+    }])
+
+    .service('createStyleString', function() {
+        return function(object) {
+            var styles = [];
+            angular.forEach(object, function(value, key) {
+                styles.push(key + ':' + value);
+            });
+            return styles.join(';');
+        };
+    })
+
+  
 
 angular.module('angular-carousel.shifty', [])
 
